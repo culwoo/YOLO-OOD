@@ -1,0 +1,26 @@
+# Core dependencies for YOLO + OOD Detection Gradio App
+
+# Deep Learning
+torch>=2.0.0
+torchvision>=0.15.0
+
+# YOLO
+ultralytics>=8.0.0
+
+# Web Interface
+gradio>=4.0.0
+
+# Image Processing
+opencv-python>=4.8.0
+Pillow>=10.0.0
+
+# Scientific Computing
+numpy>=1.23.0
+scipy>=1.10.0
+
+# Utilities
+tqdm>=4.65.0
+pyyaml>=6.0.0
+
+# Note: For CPU-only installation, use:
+# pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
