@@ -4,6 +4,7 @@ Utility functions for YOLO + OOD detection visualization
 
 import cv2
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 
 
 def apply_clahe_cpu(img_rgb):
@@ -29,6 +30,53 @@ def apply_clahe_cpu(img_rgb):
     clahe_rgb = cv2.cvtColor(img_ycrcb, cv2.COLOR_YCrCb2RGB)
 
     return clahe_rgb
+
+
+def get_font(font_size):
+    """Helper to load font"""
+    try:
+        return ImageFont.truetype("malgun.ttf", font_size)
+    except:
+        return ImageFont.load_default()
+
+def get_text_size_korean(text, font_size):
+    """
+    Get text size and offsets using PIL
+    """
+    font = get_font(font_size)
+    bbox = font.getbbox(text)
+    # bbox is (left, top, right, bottom)
+    width = bbox[2] - bbox[0]
+    height = bbox[3] - bbox[1]
+    offset_x = bbox[0]
+    offset_y = bbox[1]
+    return width, height, offset_x, offset_y
+
+def draw_text_korean(img, text, position, color=(0, 255, 0), font_size=20):
+    """
+    Draw Korean text using PIL
+    
+    Args:
+        img: (H, W, 3) BGR image (OpenCV format)
+        text: Text to draw
+        position: (x, y) coordinates
+        color: (B, G, R) color tuple
+        font_size: Font size
+        
+    Returns:
+        img_with_text: (H, W, 3) BGR image
+    """
+    img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    draw = ImageDraw.Draw(img_pil)
+    
+    font = get_font(font_size)
+    
+    # Convert BGR color to RGB for PIL
+    color_rgb = (color[2], color[1], color[0])
+    
+    draw.text(position, text, font=font, fill=color_rgb)
+    
+    return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
 
 def create_ood_warning_overlay(img_shape, intensity=0.3, border_width=None):
@@ -95,23 +143,46 @@ def draw_ood_warning(img, ood_detected, alpha=0.5):
     thickness = max(2, int(font_scale * 2))
 
     font = cv2.FONT_HERSHEY_SIMPLEX
-    text = "WARNING: OOD DETECTED!"
+    text = "WARNING: 미상 물체 감지됨"
+    
+    # ------------------
+    # (text_w, text_h), _ = cv2.getTextSize(text, font, font_scale, thickness)
 
-    (text_w, text_h), _ = cv2.getTextSize(text, font, font_scale, thickness)
-
-    x = (W - text_w) // 2
-    y = int(H * 0.08)  # Top 8% position
+    #x = (W - text_w) // 2
+    #y = int(H * 0.08)  # Top 8% position
 
     # Text background (black rectangle)
-    padding = 15
-    cv2.rectangle(img_with_warning,
-                  (x - padding, y - text_h - padding),
-                  (x + text_w + padding, y + padding),
-                  (0, 0, 0), -1)
+    #padding = 15
+    #cv2.rectangle(img_with_warning,
+    #              (x - padding, y - text_h - padding),
+    #              (x + text_w + padding, y + padding),
+    #              (0, 0, 0), -1)
+    # ------------------
 
-    # Text (red in BGR)
-    cv2.putText(img_with_warning, text, (x, y),
-                font, font_scale, (0, 0, 255), thickness)
+    # Text (red in BGR) - Use PIL for Korean support
+    # Re-calculate position and size using PIL font
+    font_size = int(font_scale * 30) # Approximate conversion
+    text_w, text_h, off_x, off_y = get_text_size_korean(text, font_size)
+
+    x = (W - text_w) // 2
+    y = int(H * 0.08)
+    
+    # Draw background again with correct size
+    # Add some padding
+    padding_x = 10
+    padding_y = 10 # Increased vertical padding slightly
+    
+    cv2.rectangle(img_with_warning,
+                  (x - padding_x, y - padding_y),
+                  (x + text_w + padding_x, y + text_h + padding_y),
+                  (0, 0, 0), -1)
+                  
+    # Draw text centered in the box
+    # To align visible pixels to (x, y), we subtract the offsets
+    draw_x = x - off_x
+    draw_y = y - off_y
+    
+    img_with_warning = draw_text_korean(img_with_warning, text, (draw_x, draw_y), (0, 0, 255), font_size)
 
     return img_with_warning
 
@@ -184,26 +255,51 @@ def draw_bboxes(img, results, original_shape, model_input_shape=(544, 960), conf
                              (x1_orig, y1_orig), (x2_orig, y2_orig),
                              (0, 255, 0), 3)
 
+                # Class name mapping
+                class_names = {
+                    0: "어선",
+                    1: "상선",
+                    2: "군함"
+                }
+                class_name = class_names.get(cls_id, f"Class {cls_id}")
+                
                 # Label background
-                label = f"Class {cls_id}: {conf:.2f}"
-                font_scale = 0.8
-                thickness = 2
-                (label_w, label_h), _ = cv2.getTextSize(
-                    label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness
-                )
-
+                label = f"{class_name}: {conf:.2f}"
+                font_size = 20
+                label_w, label_h, off_x, off_y = get_text_size_korean(label, font_size)
+                
                 # Ensure label stays within image
                 label_y = max(label_h + 10, y1_orig)
-
+                
+                # Draw green background for label
+                padding = 4
+                # Box top is label_y - label_h - 2*padding
+                # Box bottom is label_y
+                box_top = label_y - label_h - padding * 2
+                box_bottom = label_y
+                box_left = x1_orig
+                box_right = x1_orig + label_w + padding * 2
+                
                 cv2.rectangle(img_with_boxes,
-                             (x1_orig, label_y - label_h - 10),
-                             (x1_orig + label_w + 10, label_y),
+                             (box_left, box_top),
+                             (box_right, box_bottom),
                              (0, 255, 0), -1)
 
                 # Label text
-                cv2.putText(img_with_boxes, label,
-                           (x1_orig + 5, label_y - 5),
-                           cv2.FONT_HERSHEY_SIMPLEX,
-                           font_scale, (0, 0, 0), thickness)
+                # We want visible text top at box_top + padding
+                # visible text top = draw_y + off_y
+                # draw_y + off_y = box_top + padding
+                # draw_y = box_top + padding - off_y
+                
+                text_draw_y = box_top + padding - off_y
+                text_draw_x = box_left + padding - off_x
+                
+                img_with_boxes = draw_text_korean(
+                    img_with_boxes, 
+                    label, 
+                    (text_draw_x, text_draw_y), 
+                    (0, 0, 0), 
+                    font_size
+                )
 
     return img_with_boxes
