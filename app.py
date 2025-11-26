@@ -102,7 +102,7 @@ with gr.Blocks(title="YOLO + OOD Detection", theme=gr.themes.Soft()) as demo:
     with gr.Row():
         with gr.Column(scale=1):
              # Help button: Small question mark icon
-            help_btn = gr.Button("❓", scale=0, min_width=1)
+            help_btn = gr.Button("가이드 열기", scale=0, min_width=1)
             
     # Help area state
     help_visible_state = gr.State(value=False)
